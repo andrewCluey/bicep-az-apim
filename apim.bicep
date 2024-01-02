@@ -19,7 +19,7 @@ Source / Destination	Purpose	VNet type
 
 */
 
- @description('The name to assign to the new APIM instance.')
+@description('The name to assign to the new APIM instance.')
 param name string
 
 @description('The Azure region for the APIM.')
@@ -54,6 +54,8 @@ param subnet_name string
 @description('The name of the vNET that hosts the subnet for the new APIM instance.')
 param vnet_name string
 
+param vnet_resource_group string 
+
 param createAppInsightsLogger bool = false
 
 @description('Azure Application Insights Name')
@@ -76,18 +78,47 @@ param dnsLabelPrefix string = toLower('${name}-${uniqueString(resourceGroup().id
 ])
 param management_pubAccess string = 'Enabled'
 
-@description('Url to the KeyVault Secret containing the Ssl Certificate. If absolute URL contains the version of the secret/cert, then auto-update of the SSL certificate will not work. This requires API Management service to be configured with aka.ms/apimmsi. The secret should be of type application/x-pkcs12')
-param secretUri string 
-
 @description('The custom domain to use for the APIM Gateway & Portal endpoints.')
 param customDomain string
+
+@description('The ID of the Subscription that the Private DNS Zone is located in.')
+param customDomainDnsZone_SubscriptionId string
+
+@description('The name of the Resource Group where the private DNS Zone for the Custom Domain is located.')
+param customDomainDnsZone_resourceGroup string 
 
 @description('The name of the Key Vault where the certificate secret is stored.')
 param kv_name string
 
+@description('The name of the Resource Group where the Key Vault is located.')
+param keyvault_resourceGroup string
+
+@description('The Subscription ID where the Key Vault Resource group is located.')
+param keyvault_subscriptionId string
+
+@description('Url to the KeyVault Secret containing the Ssl Certificate. If absolute URL contains the version of the secret/cert, then auto-update of the SSL certificate will not work. This requires API Management service to be configured with aka.ms/apimmsi. The secret should be of type application/x-pkcs12')
+param secretUri string 
+
 
 // VARIABLES
 var nsgName = 'apimnsg${uniqueString(resourceGroup().id)}'
+var apim_custom_properties = {
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_128_GCM_SHA256': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_256_CBC_SHA256': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_128_CBC_SHA256': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_256_CBC_SHA': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_128_CBC_SHA': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TripleDes168': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls11': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Ssl30': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls10': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Ssl30': 'false'
+    'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'
+}
 var dns_records = [
   'gateway'
   'portal'
@@ -121,8 +152,10 @@ resource apimService 'Microsoft.ApiManagement/service@2023-03-01-preview' = {
     developerPortalStatus: 'Enabled'
     publicNetworkAccess: management_pubAccess
     publicIpAddressId: publicIp.id
+    customProperties: apim_custom_properties
+    publisherEmail: publisherEmail
+    publisherName: publisherName
     virtualNetworkType: 'Internal'
-    
     virtualNetworkConfiguration: {
       subnetResourceId: associateNsg.outputs.subnetId
     }
@@ -143,25 +176,6 @@ resource apimService 'Microsoft.ApiManagement/service@2023-03-01-preview' = {
         identityClientId: userIdentity.properties.clientId
       }
     ]
-    customProperties: {
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_128_GCM_SHA256': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_256_CBC_SHA256': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_128_CBC_SHA256': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_256_CBC_SHA': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TLS_RSA_WITH_AES_128_CBC_SHA': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Ciphers.TripleDes168': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls10': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Tls11': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Protocols.Ssl30': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls10': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Tls11': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Security.Backend.Protocols.Ssl30': 'false'
-        'Microsoft.WindowsAzure.ApiManagement.Gateway.Protocols.Server.Http2': 'false'
-      }
-      publisherEmail: publisherEmail
-      publisherName: publisherName
   }
 }
 
@@ -191,6 +205,56 @@ resource publicIp 'Microsoft.Network/publicIPAddresses@2023-06-01' = {
     dnsSettings: {
       domainNameLabel: dnsLabelPrefix
     }
+  }
+}
+
+// Get existing vnet
+resource vnet 'Microsoft.Network/virtualNetworks@2023-06-01' existing = {
+  name: vnet_name
+  scope: resourceGroup(vnet_resource_group)
+}
+
+// Get existing subnet for APIM
+resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-06-01' existing = {
+  name: subnet_name
+  parent: vnet
+}
+
+// Associate NSG with the Subnet
+module associateNsg 'updateSubnet.bicep' = {
+  scope: resourceGroup(vnet_resource_group)
+  name: 'associateNSG-${guid(nsgName, subnet_name)}'
+  params: {
+    vnetName: vnet.name
+    subnetName: subnet_name
+    properties: union(subnet.properties, {
+      networkSecurityGroup: {
+        id: apimNsg.id
+      }
+    })
+  }
+}
+
+
+// register the new Custom APIM name and IP with an existing private DNS Zone 
+module registerRecords 'registerDNS.bicep' = {
+  scope: resourceGroup(customDomainDnsZone_SubscriptionId, customDomainDnsZone_resourceGroup)
+  name: 'deploy-${guid(customDomain)}-records'
+  params: {
+    customDomain: customDomain
+    dns_records: dns_records
+    apim_private_ipAddresses: apimService.properties.privateIPAddresses[0] 
+  }
+}
+
+
+// KV Role Assignment
+module kv 'kv.bicep' = {
+  scope: resourceGroup(keyvault_subscriptionId, keyvault_resourceGroup)
+  name: 'deployment-${guid(kv_name, userIdentity.id)}'
+  params: {
+    apim_userAssignedId_clientId: userIdentity.properties.principalId
+    kv_name: kv_name
   }
 }
 
@@ -428,60 +492,6 @@ resource apimNsg 'Microsoft.Network/networkSecurityGroups@2023-06-01' = {
     ]
   }
 }
-
-
-// Get existing vnet
-resource vnet 'Microsoft.Network/virtualNetworks@2023-06-01' existing = {
-  name: vnet_name
-}
-
-// Get existing subnet
-resource subnet 'Microsoft.Network/virtualNetworks/subnets@2023-06-01' existing = {
-  name: subnet_name
-  parent: vnet
-}
-
-// Associate NSG with the Subnet
-module associateNsg 'updateSubnet.bicep' = {
-  name: 'associateNSG-${guid(nsgName, subnet_name)}'
-  params: {
-    vnetName: vnet.name
-    subnetName: subnet_name
-    properties: union(subnet.properties, {
-      networkSecurityGroup: {
-        id: apimNsg.id
-      }
-    })
-  }
-}
-
-// Get the Private DNS Zone for the Custom Domain
-resource zones 'Microsoft.Network/privateDnsZones@2020-06-01' existing = {
-  name: customDomain
-}
-
-resource registerApimNames 'Microsoft.Network/privateDnsZones/A@2020-06-01' = [for record in dns_records: {
-  parent: zones
-  name: record
-  properties: {
-    ttl: 3600 
-    aRecords: [
-      {
-        ipv4Address: apimService.properties.privateIPAddresses[0]  
-      } 
-    ] 
-  }
-}]
-
-// KV Role Assignment
-module kv 'kv.bicep' = {
-  name: 'deployment-${guid(kv_name, userIdentity.id)}'
-  params: {
-    apim_userAssignedId_clientId: userIdentity.properties.principalId
-    kv_name: kv_name
-  }
-}
-
 
 // OUTPUTS
 output apimServiceName string = apimService.name
